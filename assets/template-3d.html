@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧠 Grom's Knowledge Graph — 3D</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;overflow:hidden}
+#graph{width:100vw;height:100vh}
+#hud{position:fixed;top:0;left:0;right:0;z-index:10;background:rgba(13,17,23,.92);border-bottom:1px solid #30363d;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(10px)}
+#hud h1{font-size:15px;font-weight:700;background:linear-gradient(135deg,#4ecdc4,#61afef,#c678dd);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#hud .stats{font-size:11px;color:#8b949e;display:flex;gap:14px}
+.sn{color:#4ecdc4;font-weight:700}
+#search-bar{position:fixed;top:44px;left:0;right:0;z-index:10;background:rgba(13,17,23,.9);border-bottom:1px solid #30363d;padding:6px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;backdrop-filter:blur(8px)}
+#search{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:5px 10px;color:#e6edf3;font-size:12px;outline:none;width:180px}
+#search:focus{border-color:#4ecdc4}
+#search::placeholder{color:#484f58}
+.chip{padding:3px 8px;border-radius:12px;font-size:10px;border:1px solid #30363d;background:transparent;color:#8b949e;cursor:pointer;transition:all .15s;white-space:nowrap}
+.chip:hover{border-color:#4ecdc4;color:#4ecdc4}
+.chip.on{background:#4ecdc4;color:#0d1117;border-color:#4ecdc4;font-weight:600}
+#panel{position:fixed;top:0;right:0;bottom:0;width:360px;max-width:85vw;background:#161b22;border-left:1px solid #30363d;z-index:20;transform:translateX(100%);transition:transform .25s;display:flex;flex-direction:column;overflow:hidden}
+#panel.open{transform:translateX(0)}
+#panel-head{padding:14px 16px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:flex-start}
+#panel-title{font-size:14px;font-weight:700;color:#4ecdc4;max-width:260px;word-break:break-word}
+#panel-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;margin-top:4px}
+#panel-close{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
+#panel-close:hover{background:#21262d;color:#e6edf3}
+#panel-body{padding:14px 16px;overflow-y:auto;flex:1;font-size:12px;line-height:1.6;color:#c9d1d9}
+#panel-conn{padding:10px 16px;border-top:1px solid #30363d;max-height:240px;overflow-y:auto}
+#panel-conn h4{font-size:10px;color:#8b949e;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.conn{padding:4px 8px;background:rgba(255,255,255,.02);border-radius:6px;margin-bottom:3px;font-size:11px;cursor:pointer;transition:background .12s;display:flex;align-items:center;gap:6px;border-left:3px solid #30363d}
+.conn:hover{background:rgba(78,205,196,.1)}
+.conn-rel{color:#484f58;font-size:9px;margin-left:auto}
+#legend{position:fixed;bottom:10px;left:10px;z-index:10;background:rgba(22,27,34,.94);border:1px solid #30363d;border-radius:10px;padding:8px 12px;font-size:10px;max-height:45vh;overflow-y:auto;backdrop-filter:blur(8px)}
+#legend h4{font-size:9px;color:#8b949e;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.li{display:flex;align-items:center;gap:5px;margin-bottom:2px;cursor:pointer}
+.ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#tip{position:fixed;bottom:60px;right:16px;z-index:10;background:rgba(22,27,34,.9);border:1px solid #30363d;border-radius:8px;padding:6px 10px;font-size:10px;color:#8b949e;transition:opacity .5s}
+</style>
+</head>
+<body>
+<div id="hud">
+  <h1>🧠 Grom's Knowledge Graph — 3D WebGL</h1>
+  <div class="stats"><span><span class="sn" id="sn">0</span> nodes</span><span><span class="sn" id="sl">0</span> links</span></div>
+</div>
+<div id="search-bar"><input type="text" id="search" placeholder="🔍 Search..." /></div>
+<div id="graph"></div>
+<div id="panel">
+  <div id="panel-head"><div><div id="panel-title"></div><div><span id="panel-badge"></span></div></div><button id="panel-close">✕</button></div>
+  <div id="panel-body"></div>
+  <div id="panel-conn"><h4>Connections</h4><div id="conn-list"></div></div>
+</div>
+<div id="legend"></div>
+<div id="tip">🖱 Left-drag: rotate · Right-drag: pan · Scroll: zoom · Click: inspect</div>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.4/dist/3d-force-graph.min.js"></script>
+<script>
+const DATA = __GRAPH_DATA__;
+const CC = DATA.category_colors;
+const nc = n => CC[n.category] || '#8b949e';
+
+const gData = {
+  nodes: DATA.nodes.map(n => ({
+    id: n.id, label: n.label, category: n.category, detail: n.detail,
+    type: n.type, val: n.type === 'hub' ? n.size * 3 : n.size,
+    color: nc(n), size: n.size
+  })),
+  links: DATA.links.map(l => ({
+    source: l.source, target: l.target, relation: l.relation, strength: l.strength
+  }))
+};
+
+let highlight = new Set();
+let selNode = null;
+
+const el = document.getElementById('graph');
+const Graph = ForceGraph3D()(el)
+  .graphData(gData)
+  .backgroundColor('#0d1117')
+  .width(window.innerWidth)
+  .height(window.innerHeight)
+  .showNavInfo(false)
+  .nodeRelSize(3)
+  .nodeVal(n => n.val)
+  .nodeLabel(n => `${n.label} [${n.category}]`)
+  .nodeColor(n => {
+    if (selNode) {
+      if (n === selNode) return '#ffffff';
+      if (highlight.has(n.id)) return nc(n);
+      return '#1e2230';
+    }
+    return nc(n);
+  })
+  .nodeOpacity(1.0)
+  .nodeThreeObject(n => {
+    try {
+      const col = new THREE.Color(nc(n));
+      const r = Math.cbrt(n.val) * (n.type === 'hub' ? 3.2 : 2.4);
+      const group = new THREE.Group();
+      const geo = new THREE.SphereGeometry(r, 24, 16);
+      const mat = new THREE.MeshPhongMaterial({
+        color: col, emissive: col, emissiveIntensity: 0.55,
+        shininess: 90, transparent: true, opacity: 1.0
+      });
+      group.add(new THREE.Mesh(geo, mat));
+      const hGeo = new THREE.SphereGeometry(r * 1.25, 16, 12);
+      const hMat = new THREE.MeshBasicMaterial({
+        color: col, transparent: true, opacity: 0.1, depthWrite: false
+      });
+      group.add(new THREE.Mesh(hGeo, hMat));
+      // Store refs for click updates
+      n._coreMat = mat;
+      n._haloMat = hMat;
+      n._baseColor = col.clone();
+      return group;
+    } catch(e) { return undefined; }
+  })
+  .linkDirectionalParticles(2)
+  .linkDirectionalParticleWidth(0.6)
+  .linkDirectionalParticleSpeed(0.003)
+  .linkDirectionalParticleColor(() => '#4ecdc4')
+  .linkColor(l => {
+    if (!selNode) return 'rgba(78,205,196,0.45)';
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    if (sid === selNode.id || tid === selNode.id) return '#4ecdc4';
+    return 'rgba(0,0,0,0)';
+  })
+  .linkWidth(l => {
+    if (!selNode) return 0.6;
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return (sid === selNode.id || tid === selNode.id) ? 4 : 0;
+  })
+  .linkDirectionalParticles(l => {
+    if (!selNode) return 2;
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return (sid === selNode.id || tid === selNode.id) ? 6 : 2;
+  })
+  .linkDirectionalParticleWidth(l => {
+    if (!selNode) return 0.6;
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return (sid === selNode.id || tid === selNode.id) ? 1.8 : 0.6;
+  })
+  .linkDirectionalParticleSpeed(0.004)
+  .onNodeClick(n => {
+    selNode = n;
+    highlight.clear();
+    gData.links.forEach(l => {
+      const sid = typeof l.source === 'object' ? l.source.id : l.source;
+      const tid = typeof l.target === 'object' ? l.target.id : l.target;
+      if (sid === n.id) highlight.add(tid);
+      if (tid === n.id) highlight.add(sid);
+    });
+    // Dim unconnected nodes, brighten connected
+    gData.nodes.forEach(nd => {
+      if (!nd._coreMat) return;
+      if (nd === n) {
+        nd._coreMat.opacity = 1.0; nd._coreMat.emissiveIntensity = 0.7;
+        nd._haloMat.opacity = 0.2;
+      } else if (highlight.has(nd.id)) {
+        nd._coreMat.opacity = 1.0; nd._coreMat.emissiveIntensity = 0.55;
+        nd._haloMat.opacity = 0.1;
+      } else {
+        nd._coreMat.opacity = 0.12; nd._coreMat.emissiveIntensity = 0.1;
+        nd._haloMat.opacity = 0.0;
+      }
+    });
+    showPanel(n);
+    Graph.cameraPosition(
+      { x: n.x + 140, y: n.y + 70, z: n.z + 140 },
+      { x: n.x, y: n.y, z: n.z }, 1200
+    );
+  })
+  .onBackgroundClick(() => {
+    selNode = null; highlight.clear();
+    // Reset all nodes to full brightness
+    gData.nodes.forEach(nd => {
+      if (!nd._coreMat) return;
+      nd._coreMat.opacity = 1.0; nd._coreMat.emissiveIntensity = 0.55;
+      nd._haloMat.opacity = 0.1;
+    });
+    document.getElementById('panel').classList.remove('open');
+  })
+  .onEngineStop(() => {
+    // Add bloom post-processing after layout settles
+    try {
+      const renderer = Graph.renderer();
+      const scene = Graph.scene();
+      const camera = Graph.camera();
+      if (renderer && scene && camera && window.THREE) {
+        scene.add(new THREE.AmbientLight(0x334466, 2.5));
+        const p1 = new THREE.PointLight(0x4ecdc4, 1.2, 1000);
+        p1.position.set(250, 250, 250); scene.add(p1);
+        const p2 = new THREE.PointLight(0xc678dd, 0.8, 1000);
+        p2.position.set(-250, -150, -250); scene.add(p2);
+        const p3 = new THREE.PointLight(0x61afef, 0.6, 800);
+        p3.position.set(0, 300, -200); scene.add(p3);
+      }
+    } catch(e) { console.warn('Lighting:', e); }
+  })
+  .cooldownTicks(200)
+  .d3AlphaDecay(0.02)
+  .d3VelocityDecay(0.3);
+
+// Forces
+Graph.d3Force('charge').strength(n => n.type === 'hub' ? -180 : -35);
+Graph.d3Force('link').distance(l => {
+  const s = typeof l.source === 'object' ? l.source : gData.nodes.find(x=>x.id===l.source);
+  const t = typeof l.target === 'object' ? l.target : gData.nodes.find(x=>x.id===l.target);
+  return (s?.type === 'hub' || t?.type === 'hub') ? 80 : 40;
+});
+
+// Stats
+document.getElementById('sn').textContent = DATA.stats.total_nodes;
+document.getElementById('sl').textContent = DATA.stats.total_links;
+
+function showPanel(n) {
+  const p = document.getElementById('panel');
+  p.classList.add('open');
+  document.getElementById('panel-title').textContent = n.label;
+  const b = document.getElementById('panel-badge');
+  b.textContent = n.type === 'hub' ? 'Hub: ' + n.category : n.category;
+  b.style.background = nc(n); b.style.color = '#0d1117';
+  document.getElementById('panel-body').innerHTML = '<p>' + (n.detail || '').replace(/\n/g, '<br>') + '</p>';
+  const cl = document.getElementById('conn-list'); cl.innerHTML = '';
+  gData.links.forEach(l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    let cid = sid === n.id ? tid : (tid === n.id ? sid : null);
+    if (!cid) return;
+    const cn = gData.nodes.find(x => x.id === cid);
+    if (!cn) return;
+    const d = document.createElement('div'); d.className = 'conn';
+    d.style.borderLeftColor = nc(cn);
+    d.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${nc(cn)};flex-shrink:0"></span>${cn.label}<span class="conn-rel">${l.relation||''}</span>`;
+    d.onclick = () => {
+      selNode = cn; highlight.clear();
+      gData.links.forEach(ll => {
+        const s2 = typeof ll.source === 'object' ? ll.source.id : ll.source;
+        const t2 = typeof ll.target === 'object' ? ll.target.id : ll.target;
+        if (s2 === cn.id) highlight.add(t2);
+        if (t2 === cn.id) highlight.add(s2);
+      });
+      showPanel(cn);
+      Graph.cameraPosition({ x:cn.x+140, y:cn.y+70, z:cn.z+140 }, cn, 1200);
+    };
+    cl.appendChild(d);
+  });
+}
+
+document.getElementById('panel-close').onclick = () => {
+  selNode = null; highlight.clear();
+  document.getElementById('panel').classList.remove('open');
+};
+
+// Search
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  Graph.nodeColor(n => {
+    if (q && !(n.label||'').toLowerCase().includes(q) && !(n.detail||'').toLowerCase().includes(q)) return '#1e2230';
+    return nc(n);
+  });
+});
+
+// Chips
+const tb = document.getElementById('search-bar');
+let catFilter = null;
+const cats = [...new Set(DATA.nodes.map(n => n.category))].sort();
+const allC = document.createElement('button'); allC.className = 'chip on'; allC.textContent = 'All';
+allC.onclick = () => { catFilter = null; document.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); allC.classList.add('on'); Graph.nodeColor(n => nc(n)); };
+tb.appendChild(allC);
+cats.forEach(cat => {
+  const ch = document.createElement('button'); ch.className = 'chip'; ch.textContent = cat;
+  ch.style.borderColor = CC[cat] || '#30363d';
+  ch.onclick = () => {
+    if (catFilter === cat) { catFilter = null; ch.classList.remove('on'); allC.classList.add('on'); }
+    else { catFilter = cat; document.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); ch.classList.add('on'); }
+    Graph.nodeColor(n => (catFilter && n.category !== catFilter) ? '#1e2230' : nc(n));
+  };
+  tb.appendChild(ch);
+});
+
+// Legend
+const lg = document.getElementById('legend');
+lg.innerHTML = '<h4>Categories</h4>';
+cats.forEach(cat => {
+  const count = DATA.nodes.filter(n => n.category === cat).length;
+  const d = document.createElement('div'); d.className = 'li';
+  d.innerHTML = `<span class="ld" style="background:${CC[cat]||'#8b949e'}"></span>${cat} (${count})`;
+  lg.appendChild(d);
+});
+
+addEventListener('resize', () => { Graph.width(innerWidth).height(innerHeight); });
+setTimeout(() => { const t = document.getElementById('tip'); if(t){ t.style.opacity='0'; setTimeout(()=>t.remove(),600); }}, 6000);
+</script>
+</body>
+</html>
