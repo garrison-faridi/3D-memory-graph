@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory System — Live — Vellum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0F1610;color:#e6edf3;font-family:'Inter',-apple-system,system-ui,sans-serif;overflow:hidden}
+#graph{width:100vw;height:100vh}
+
+/* HUD */
+#hud{position:fixed;top:0;left:0;right:0;z-index:10;background:rgba(8,8,12,.94);border-bottom:1px solid rgba(14,155,139,.15);padding:12px 20px;display:flex;align-items:center;gap:16px}
+#hud .brand{display:flex;align-items:center;gap:10px}
+#hud .brand svg{width:20px;height:20px}
+#hud .brand span{font-size:13px;font-weight:600;color:#0E9B8B;letter-spacing:0.5px}
+#hud .divider{width:1px;height:20px;background:rgba(14,155,139,.2)}
+#hud .title{font-size:13px;font-weight:500;color:#8b8b9e}
+#hud .stats{margin-left:auto;display:flex;gap:14px;font-size:11px;color:#6b6b80}
+#hud .stats .num{color:#0E9B8B;font-weight:600;font-variant-numeric:tabular-nums}
+#hud .live-dot{width:8px;height:8px;border-radius:50%;background:#EF4400;animation:pulse-live 2s ease-in-out infinite}
+@keyframes pulse-live{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Search */
+#search-box{position:fixed;top:54px;left:20px;z-index:10}
+#search-box input{background:rgba(30,42,28,.9);border:1px solid rgba(14,155,139,.2);border-radius:6px;color:#e6edf3;font-size:12px;padding:6px 10px;width:200px;outline:none;font-family:inherit}
+#search-box input:focus{border-color:rgba(139,92,246,.5)}
+
+/* Detail Panel */
+#panel{position:fixed;top:54px;right:0;width:320px;height:calc(100vh - 100px);background:rgba(12,12,18,.95);border-left:1px solid rgba(139,92,246,.12);z-index:10;padding:16px;overflow-y:auto;display:none;font-size:12px}
+#panel.open{display:block}
+#panel .node-type{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+#panel .node-label{font-size:14px;font-weight:600;color:#e6edf3;margin-bottom:10px;line-height:1.4}
+#panel .node-content{font-size:11px;color:#8b8b9e;line-height:1.5;margin-bottom:14px;white-space:pre-wrap;word-break:break-word}
+#panel .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#panel .meta-item{background:rgba(139,92,246,.06);border:1px solid rgba(14,155,139,.1);border-radius:4px;padding:6px 8px}
+#panel .meta-item .meta-label{font-size:9px;color:#6b6b80;text-transform:uppercase;letter-spacing:0.5px}
+#panel .meta-item .meta-value{font-size:12px;color:#2CC4B3;font-weight:500;margin-top:2px}
+#panel .edges-section{margin-top:14px;border-top:1px solid rgba(14,155,139,.1);padding-top:10px}
+#panel .edges-section h4{font-size:10px;color:#6b6b80;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}
+#panel .edge-item{font-size:11px;color:#8b8b9e;padding:4px 6px;margin:1px 0;display:flex;align-items:center;gap:6px;border-radius:4px;cursor:pointer;transition:background .15s}
+#panel .edge-item:hover{background:rgba(14,155,139,.1);color:#2CC4B3}
+#panel .edge-rel{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500}
+#panel .close-btn{position:absolute;top:12px;right:12px;background:none;border:none;color:#6b6b80;cursor:pointer;font-size:16px}
+
+/* Legend */
+#legend{position:fixed;bottom:70px;left:20px;z-index:10;background:rgba(12,12,18,.92);border:1px solid rgba(14,155,139,.1);border-radius:8px;padding:12px 14px;font-size:10px}
+#legend h4{color:#6b6b80;font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}
+#legend .leg-item{display:flex;align-items:center;gap:6px;padding:2px 0;color:#8b8b9e}
+#legend .leg-dot{width:8px;height:8px;border-radius:50%}
+#legend .leg-line{width:14px;height:2px;border-radius:1px}
+#legend .section-gap{height:8px}
+
+/* Timeline */
+#timeline{position:fixed;bottom:0;left:0;right:0;z-index:10;background:rgba(8,8,12,.96);border-top:1px solid rgba(14,155,139,.15);padding:10px 20px;display:flex;align-items:center;gap:12px}
+#timeline .play-btn{background:rgba(14,155,139,.15);border:1px solid rgba(14,155,139,.3);color:#0E9B8B;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;min-width:32px;text-align:center}
+#timeline .play-btn:hover{background:rgba(139,92,246,.25)}
+#timeline .scrubber{flex:1;-webkit-appearance:none;background:rgba(14,155,139,.1);height:4px;border-radius:2px;outline:none;cursor:pointer}
+#timeline .scrubber::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#0E9B8B;border-radius:50%;cursor:pointer;border:2px solid #0F1610}
+#timeline .info{font-size:11px;color:#6b6b80;white-space:nowrap;font-variant-numeric:tabular-nums}
+#timeline .info .date{color:#0E9B8B;font-weight:500}
+#timeline .speed-btn{background:none;border:1px solid rgba(14,155,139,.15);color:#6b6b80;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;font-family:inherit}
+#timeline .speed-btn.active{color:#0E9B8B;border-color:rgba(14,155,139,.3)}
+#timeline .mode-btn{background:rgba(14,155,139,.15);border:1px solid rgba(14,155,139,.3);color:#0E9B8B;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:500}
+#timeline .mode-btn.active{background:#0E9B8B;color:#fff}
+
+/* Live query pill */
+#live-query{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:20;display:none;background:rgba(16,40,24,.95);border:1px solid rgba(76,155,80,.3);border-radius:8px;padding:8px 16px;max-width:500px;text-align:center}
+#live-query .lq-label{font-size:9px;color:#4C9B50;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+#live-query .lq-text{font-size:12px;color:#a7f3d0;font-weight:500}
+#live-query .lq-stats{font-size:10px;color:#6b8b7b;margin-top:4px}
+
+/* Accuracy */
+#accuracy{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:10;background:rgba(14,155,139,.08);border:1px solid rgba(14,155,139,.15);border-radius:6px;padding:6px 12px;font-size:10px;color:#8b8b9e;cursor:pointer;max-width:400px;text-align:center}
+#accuracy:hover{background:rgba(139,92,246,.12)}
+#accuracy-detail{display:none;position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(28,38,25,.97);border:1px solid rgba(14,155,139,.2);border-radius:8px;padding:16px;font-size:11px;color:#8b8b9e;max-width:420px;line-height:1.6}
+#accuracy-detail.open{display:block}
+#accuracy-detail h4{color:#0E9B8B;font-size:11px;margin-bottom:8px}
+#accuracy-detail .item{margin-bottom:6px}
+#accuracy-detail .tag{font-weight:500}
+#accuracy-detail .tag.real{color:#4C9B50}
+#accuracy-detail .tag.approx{color:#E9C91A}
+#accuracy-detail .tag.deco{color:#DB4B77}
+
+/* Retrieval Results Panel */
+#retrieval-panel{position:fixed;top:54px;right:0;width:320px;height:calc(100vh - 100px);background:rgba(12,12,18,.95);border-left:1px solid rgba(76,155,80,.2);z-index:10;padding:16px;overflow-y:auto;display:none;font-size:12px}
+#retrieval-panel.open{display:block}
+#retrieval-panel .close-btn{position:absolute;top:12px;right:12px;background:none;border:none;color:#6b6b80;cursor:pointer;font-size:16px}
+.rp-header{margin-bottom:12px}
+.rp-badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px;color:#4C9B50;background:rgba(76,155,80,.1);border:1px solid rgba(76,155,80,.2)}
+.rp-count{font-size:11px;color:#6b6b80;margin-top:6px}
+.rp-node{padding:10px;margin-bottom:6px;border-radius:6px;background:rgba(139,92,246,.04);border:1px solid rgba(14,155,139,.08);cursor:pointer;transition:background .15s}
+.rp-node:hover{background:rgba(14,155,139,.1)}
+.rp-node .rp-type{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.rp-node .rp-label{font-size:12px;color:#e6edf3;line-height:1.4;margin-bottom:4px}
+.rp-node .rp-score{font-size:10px;color:#6b6b80}
+.rp-node .rp-score span{color:#4C9B50;font-weight:500}
+
+/* Connection status */
+#conn-status{position:fixed;top:54px;right:20px;z-index:10;font-size:10px;padding:4px 8px;border-radius:4px}
+#conn-status.connected{color:#4C9B50;background:rgba(76,155,80,.1);border:1px solid rgba(76,155,80,.2)}
+#conn-status.disconnected{color:#EF4400;background:rgba(239,68,0,.1);border:1px solid rgba(239,68,0,.2)}
+</style>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#0E9B8B" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="#0E9B8B"/></svg>
+    <span>VELLUM</span>
+  </div>
+  <div class="divider"></div>
+  <div class="title">Memory System</div>
+  <div class="live-dot" id="live-dot" title="Live connection"></div>
+  <div class="stats">
+    <span><span class="num" id="stat-nodes">0</span> nodes</span>
+    <span><span class="num" id="stat-edges">0</span> edges</span>
+    <span><span class="num" id="stat-types">7</span> types</span>
+  </div>
+</div>
+
+<!-- Accuracy -->
+<div id="accuracy" onclick="document.getElementById('accuracy-detail').classList.toggle('open')">
+  ⓘ Live view — real data, honest labels
+</div>
+<div id="accuracy-detail">
+  <h4>Accuracy &amp; Smoke Report</h4>
+  <div class="item"><span class="tag real">REAL:</span> All nodes from memory_graph_nodes in assistant.db. Timestamps, types, metadata — ground truth.</div>
+  <div class="item"><span class="tag real">REAL:</span> All edges from memory_graph_edges — typed relationships with numeric weights.</div>
+  <div class="item"><span class="tag real">REAL:</span> Retrieval highlights use graph node UUIDs from memory_recall_logs.top_candidates_json — the exact nodes the system retrieved for each conversation turn.</div>
+  <div class="item"><span class="tag real">REAL:</span> New node spawns detected from SQLite inserts within 1-2 seconds.</div>
+  <div class="item"><span class="tag approx">APPROXIMATION:</span> Spatial positions are force-directed layout — clustering emerges from edge density but exact positions are arbitrary.</div>
+  <div class="item"><span class="tag deco">DECORATIVE:</span> The BFS lightning cascade animates along graph edges. Real retrieval is parallel vector comparison, not graph traversal. The nodes that stay lit at the end are the real signal.</div>
+</div>
+
+<!-- Connection status -->
+<div id="conn-status" class="disconnected">⊘ disconnected</div>
+
+<!-- Search -->
+<div id="search-box"><input type="text" id="search" placeholder="Search memories..." /></div>
+
+<!-- Legend -->
+<div id="legend">
+  <h4>Node Types</h4>
+  <div class="leg-item"><div class="leg-dot" style="background:#4C9B50"></div> procedural</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#DB4B77"></div> episodic</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#A665C9"></div> semantic</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#0E9B8B"></div> behavioral</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#E9C91A"></div> prospective</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#E9642F"></div> narrative</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#EF4400"></div> shared</div>
+  <div class="section-gap"></div>
+  <h4>Memory Fidelity</h4>
+  <div class="leg-item"><div class="leg-dot" style="background:rgba(255,255,255,1.0)"></div> vivid</div>
+  <div class="leg-item"><div class="leg-dot" style="background:rgba(255,255,255,0.85)"></div> clear</div>
+  <div class="leg-item"><div class="leg-dot" style="background:rgba(255,255,255,0.6)"></div> gist</div>
+  <div class="leg-item"><div class="leg-dot" style="background:rgba(255,255,255,0.4)"></div> faded</div>
+  <div class="leg-item"><div class="leg-dot" style="background:rgba(255,255,255,0.2)"></div> gone</div>
+  <div class="section-gap"></div>
+  <h4>Edge Types</h4>
+  <div class="leg-item"><div class="leg-line" style="background:rgba(200,210,195,0.45)"></div> part-of</div>
+  <div class="leg-item"><div class="leg-line" style="background:#A665C9"></div> reminds-of</div>
+  <div class="leg-item"><div class="leg-line" style="background:#0E9B8B"></div> depends-on</div>
+  <div class="leg-item"><div class="leg-line" style="background:#E9C91A"></div> supersedes</div>
+  <div class="leg-item"><div class="leg-line" style="background:#E9642F"></div> caused-by</div>
+  <div class="leg-item"><div class="leg-line" style="background:#4C9B50"></div> resolved-by</div>
+  <div class="leg-item"><div class="leg-line" style="background:#EF4400"></div> contradicts</div>
+  <div class="section-gap"></div>
+  <button id="vp-rotate" onclick="toggleRotate()" style="width:100%;background:rgba(14,155,139,.1);border:1px solid rgba(14,155,139,.15);color:#8b8b9e;border-radius:5px;padding:5px 0;font-size:11px;cursor:pointer;font-family:inherit;transition:all .15s">🔄 Rotate</button>
+</div>
+
+<!-- Detail Panel (node inspect) -->
+<div id="panel">
+  <button class="close-btn" onclick="closePanel()">&times;</button>
+  <div id="panel-content"></div>
+</div>
+
+<!-- Retrieval Results Panel -->
+<div id="retrieval-panel">
+  <button class="close-btn" onclick="closeRetrieval()">&times;</button>
+  <div class="rp-header">
+    <div class="rp-badge">⚡ RETRIEVAL</div>
+    <div class="rp-count" id="rp-count"></div>
+  </div>
+  <div id="rp-list"></div>
+</div>
+
+<!-- Live query pill -->
+<div id="live-query">
+  <div class="lq-label">⚡ Retrieval</div>
+  <div class="lq-text" id="lq-text"></div>
+  <div class="lq-stats" id="lq-stats"></div>
+</div>
+
+<!-- Timeline -->
+<div id="timeline">
+  <button class="mode-btn active" id="mode-live" onclick="setMode('live')">LIVE</button>
+  <button class="mode-btn" id="mode-timeline" onclick="setMode('timeline')">TIMELINE</button>
+  <div class="divider" style="width:1px;height:20px;background:rgba(14,155,139,.2)"></div>
+  <button class="play-btn" id="play-btn" onclick="togglePlay()" style="display:none">▶</button>
+  <input type="range" class="scrubber" id="scrubber" min="0" max="100" value="100" style="display:none" />
+  <div class="info"><span class="date" id="tl-date">—</span> &nbsp; <span id="tl-counts"></span></div>
+  <button class="speed-btn" data-speed="0.5" style="display:none">0.5×</button>
+  <button class="speed-btn active" data-speed="1" style="display:none">1×</button>
+  <button class="speed-btn" data-speed="2" style="display:none">2×</button>
+  <button class="speed-btn" data-speed="5" style="display:none">5×</button>
+  <button class="speed-btn" data-speed="10" style="display:none">10×</button>
+</div>
+
+<div id="graph"></div>
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+<script>
+window._dbg = function(){}; // no-op
+try {
+// === CONSTANTS ===
+// Vellum official secondary palette (from Figma)
+const TYPE_COLORS = {
+  procedural:'#4C9B50', episodic:'#DB4B77', semantic:'#A665C9',
+  behavioral:'#0E9B8B', prospective:'#E9C91A', narrative:'#E9642F', shared:'#EF4400'
+};
+const EDGE_COLORS = {
+  'part-of':     'rgba(200,210,195,0.55)',
+  'reminds-of':  'rgba(166,101,201,0.75)',  // purple
+  'depends-on':  'rgba(14,155,139,0.75)',    // teal
+  'supersedes':  'rgba(233,201,26,0.75)',    // gold
+  'caused-by':   'rgba(233,100,47,0.75)',    // orange
+  'resolved-by': 'rgba(76,155,80,0.75)',     // green
+  'contradicts': 'rgba(239,68,0,0.8)',       // red
+};
+const EDGE_COLORS_BRIGHT = {
+  'part-of':     'rgba(220,225,210,0.65)',
+  'reminds-of':  '#C48AE8',   // lighter purple
+  'depends-on':  '#2CC4B3',   // lighter teal
+  'supersedes':  '#F2DA4A',   // lighter gold
+  'caused-by':   '#F28A55',   // lighter orange
+  'resolved-by': '#6BBF6E',   // lighter green
+  'contradicts': '#F55A30',   // lighter red
+};
+
+// === STATE ===
+let allNodes = [], allEdges = [];
+let nodeMap = {};
+let selNode = null, hovNode = null, searchMatch = null;
+let mode = 'live'; // 'live' or 'timeline'
+let playing = false, playSpeed = 1, playTs = 0;
+let timelineMin = 0, timelineMax = 0;
+let retrievedNodes = new Set(); // currently highlighted retrieval nodes
+let retrievalScores = {}; // nodeId -> finalScore for intensity
+let retrievalTimeout = null;
+let adjacency = {};
+let cascadeActive = new Set(); // nodes currently flashing white (transient)
+let cascadeDimmed = new Set(); // nodes already visited, non-match — invisible
+const particlePool = [];
+
+function rebuildAdjacency() {
+  adjacency = {};
+  allEdges.forEach(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source;
+    const tid = typeof e.target === 'object' ? e.target.id : e.target;
+    if (!adjacency[sid]) adjacency[sid] = new Set();
+    if (!adjacency[tid]) adjacency[tid] = new Set();
+    adjacency[sid].add(tid);
+    adjacency[tid].add(sid);
+  });
+}
+function getNeighborIds(nodeId) {
+  return adjacency[nodeId] || new Set();
+}
+
+// === GRAPH INIT ===
+const Graph = ForceGraph3D()(document.getElementById('graph'))
+  .backgroundColor('#0F1610')
+  .showNavInfo(false)
+  .nodeRelSize(2.5)
+  .nodeVal(n => {
+    const base = (n.significance || 0.5) * 3;
+    const boost = Math.min((n.reinforcement_count || 0) * 0.3, 2);
+    return base + boost;
+  })
+  .nodeLabel(n => n.label + '  [' + n.type + ']')
+  .nodeOpacity(1.0)
+  .nodeThreeObject(node => {
+    try {
+      const col = new THREE.Color(TYPE_COLORS[node.type] || '#8b8b9e');
+      const sig = (node.significance || 0.5);
+      const r = (sig * 3 + 1.5) + Math.min((node.reinforcement_count || 0) * 0.2, 1);
+      const geo = new THREE.SphereGeometry(r, 24, 16);
+      
+      let emI = 0.3;
+      let opacity = 1.0;
+      if (node.fidelity === 'vivid')      { emI = 0.35; opacity = 1.0; }
+      else if (node.fidelity === 'clear') { emI = 0.28; opacity = 0.9; }
+      else if (node.fidelity === 'gist')  { emI = 0.2;  opacity = 0.7; }
+      else if (node.fidelity === 'faded') { emI = 0.12; opacity = 0.5; }
+      else if (node.fidelity === 'gone')  { emI = 0.06; opacity = 0.3; }
+      
+      const mat = new THREE.MeshStandardMaterial({
+        color: col, emissive: col, emissiveIntensity: emI,
+        roughness: 0.7, metalness: 0.1, transparent: true, opacity: opacity,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      node.__obj = mesh;
+      node.__mat = mat;
+      node.__baseEmI = emI;
+      node.__baseOpacity = opacity;
+      node.__baseColor = col.clone();
+      
+      // Spawn animation
+      if (node._spawnTime) {
+        mesh.scale.set(0.01, 0.01, 0.01);
+      }
+      
+      return mesh;
+    } catch(e) { return undefined; }
+  })
+  .onNodeHover(node => {
+    hovNode = node || null;
+    document.body.style.cursor = node ? 'pointer' : 'default';
+  })
+  .onNodeClick(node => {
+    if (!node) return;
+    selNode = node;
+    showPanel(node);
+    const dist = 120;
+    Graph.cameraPosition(
+      { x: node.x + dist, y: node.y + dist * 0.3, z: node.z + dist },
+      node, 1200
+    );
+  })
+  .onBackgroundClick(() => closePanel())
+  .linkColor(link => {
+    const sid = typeof link.source === 'object' ? link.source.id : link.source;
+    const tid = typeof link.target === 'object' ? link.target.id : link.target;
+    // Retrieval — white for edges between retrieved nodes
+    if (retrievedNodes.has(sid) && retrievedNodes.has(tid)) return '#ffffff';
+    // Hover is additive
+    if (hovNode && !selNode && !searchMatch) {
+      if (sid === hovNode.id || tid === hovNode.id) return EDGE_COLORS_BRIGHT[link.relationship] || '#0E9B8B';
+      return EDGE_COLORS[link.relationship] || 'rgba(255,255,255,0.2)';
+    }
+    if (selNode) {
+      if (sid === selNode.id || tid === selNode.id) return EDGE_COLORS_BRIGHT[link.relationship] || '#0E9B8B';
+      return 'rgba(30,30,40,0.08)';
+    }
+    if (searchMatch) {
+      if (searchMatch.has(sid) || searchMatch.has(tid)) return EDGE_COLORS_BRIGHT[link.relationship] || '#0E9B8B';
+      return 'rgba(30,30,40,0.08)';
+    }
+    return EDGE_COLORS[link.relationship] || 'rgba(255,255,255,0.2)';
+  })
+  .linkWidth(link => {
+    const sid = typeof link.source === 'object' ? link.source.id : link.source;
+    const tid = typeof link.target === 'object' ? link.target.id : link.target;
+    if (retrievedNodes.has(sid) && retrievedNodes.has(tid)) return link.weight * 2.5;
+    if (hovNode && (sid === hovNode.id || tid === hovNode.id)) return link.weight * 2;
+    if (selNode) {
+      if (sid === selNode.id || tid === selNode.id) return link.weight * 1.5;
+      return 0;
+    }
+    return (link.weight || 0.5) * 0.8 + 0.4;
+  })
+  .linkDirectionalParticles(link => {
+    if (link.relationship === 'contradicts') return 3;
+    if (link.relationship === 'supersedes') return 2;
+    return 1;
+  })
+  .linkDirectionalParticleWidth(0.5)
+  .linkDirectionalParticleSpeed(0.003)
+  .linkDirectionalParticleColor(link => EDGE_COLORS_BRIGHT[link.relationship] || '#0E9B8B')
+;
+
+// Forces
+Graph.d3Force('charge').strength(-35);
+
+// === AUTO-ROTATE ===
+// 3d-force-graph uses TrackballControls (no autoRotate), so we manually orbit the camera.
+let isRotating = false;
+let rotateAngle = 0;
+const ROTATE_SPEED = 0.003; // radians per frame — slow cinematic orbit
+
+function toggleRotate() {
+  isRotating = !isRotating;
+  const btn = document.getElementById('vp-rotate');
+  btn.style.background = isRotating ? 'rgba(139,92,246,.25)' : 'rgba(14,155,139,.1)';
+  btn.style.color = isRotating ? '#0E9B8B' : '#8b8b9e';
+  btn.style.borderColor = isRotating ? 'rgba(139,92,246,.4)' : 'rgba(14,155,139,.15)';
+}
+
+(function rotateLoop() {
+  if (isRotating) {
+    const cam = Graph.camera();
+    const dist = Math.sqrt(cam.position.x ** 2 + cam.position.z ** 2);
+    rotateAngle += ROTATE_SPEED;
+    cam.position.x = dist * Math.sin(rotateAngle);
+    cam.position.z = dist * Math.cos(rotateAngle);
+    cam.lookAt(Graph.scene().position);
+  }
+  requestAnimationFrame(rotateLoop);
+})();
+Graph.d3Force('link').distance(link => {
+  if (link.relationship === 'part-of') return 30;
+  if (link.relationship === 'supersedes') return 20;
+  return 50;
+});
+
+// Lighting
+const scene = Graph.scene();
+scene.add(new THREE.AmbientLight(0x404050, 1.2));
+const dl = new THREE.DirectionalLight(0x0E9B8B, 0.4);
+dl.position.set(50, 100, 50);
+scene.add(dl);
+
+// === ANIMATION LOOP — handles spawn, retrieval glow, hover/selection brightness, particles ===
+let _lastFrame = performance.now();
+(function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = now - _lastFrame;
+  _lastFrame = now;
+  
+  // Update particles
+  updateParticles(dt);
+  
+  const gd = Graph.graphData();
+  if (!gd || !gd.nodes) return;
+  
+  gd.nodes.forEach(node => {
+    // --- Spawn animation ---
+    if (node._spawnTime && node.__obj) {
+      const elapsed = now - node._spawnTime;
+      if (elapsed < 800) {
+        const t = elapsed / 800;
+        const s = 1 - Math.pow(1 - t, 3);
+        node.__obj.scale.set(s, s, s);
+      } else if (elapsed < 1400) {
+        node.__obj.scale.set(1, 1, 1);
+        const gt = (elapsed - 800) / 600;
+        const glow = node.__baseEmI + 0.5 * (1 - gt);
+        if (node.__mat) node.__mat.emissiveIntensity = glow;
+      } else {
+        node.__obj.scale.set(1, 1, 1);
+        if (node.__mat) node.__mat.emissiveIntensity = node.__baseEmI;
+        delete node._spawnTime;
+      }
+      return; // Skip brightness derivation during spawn
+    }
+    
+    if (!node.__mat) return;
+    
+    // --- Derive brightness from current state ---
+    // animPhase: 'idle' | 'cascade' | 'spotlight'
+    // NEVER save/restore — always re-derive
+    let targetOpacity = node.__baseOpacity;
+    let targetEmI = node.__baseEmI;
+    let useWhite = false;
+    
+    if (animPhase === 'cascade' || animPhase === 'spotlight') {
+      // Active animation — cascade or spotlight
+      if (cascadeActive.has(node.id)) {
+        // Currently flashing white (wave just hit)
+        targetEmI = 1.2;
+        targetOpacity = 1.0;
+        useWhite = true;
+      } else if (retrievedNodes.has(node.id)) {
+        // Match — stays white throughout
+        targetEmI = 1.0;
+        targetOpacity = 1.0;
+        useWhite = true;
+      } else if (cascadeDimmed.has(node.id)) {
+        // Already visited, not a match — invisible (shadow behind wave)
+        targetOpacity = 0.10;
+        targetEmI = 0.02;
+      } else if (animPhase === 'spotlight') {
+        // Unreached nodes (orphans/disconnected) — also invisible in spotlight
+        targetOpacity = 0.10;
+        targetEmI = 0.02;
+      }
+    } else {
+      // Idle — normal interactive behavior
+      // Search
+      if (searchMatch) {
+        if (searchMatch.has(node.id)) {
+          targetEmI = node.__baseEmI + 0.3;
+        } else {
+          targetOpacity = 0.08;
+          targetEmI = 0.02;
+        }
+      }
+      
+      // Selection
+      if (selNode) {
+        const selNeighbors = getNeighborIds(selNode.id);
+        if (node.id === selNode.id) {
+          targetEmI = node.__baseEmI + 0.3;
+        } else if (selNeighbors.has(node.id)) {
+          targetEmI = node.__baseEmI + 0.15;
+        } else {
+          targetOpacity = 0.06;
+          targetEmI = 0.02;
+        }
+      }
+      
+      // Hover is ADDITIVE
+      if (hovNode) {
+        const hovNeighbors = getNeighborIds(hovNode.id);
+        if (node.id === hovNode.id) {
+          targetEmI = Math.max(targetEmI, node.__baseEmI + 0.5);
+          targetOpacity = Math.max(targetOpacity, node.__baseOpacity);
+        } else if (hovNeighbors.has(node.id)) {
+          targetEmI = Math.max(targetEmI, node.__baseEmI + 0.2);
+          targetOpacity = Math.max(targetOpacity, node.__baseOpacity);
+        }
+      }
+    }
+    
+    // Apply
+    node.__mat.opacity = targetOpacity;
+    node.__mat.emissiveIntensity = targetEmI;
+    if (useWhite) {
+      node.__mat.emissive.setHex(0xffffff);
+      node.__mat.color.setHex(0xffffff);
+    } else {
+      node.__mat.emissive.copy(node.__baseColor);
+      node.__mat.color.copy(node.__baseColor);
+    }
+  });
+})();
+
+// === DATA LOADING ===
+async function loadData() {
+  let data;
+  try {
+    const res = await fetch('/data');
+    data = await res.json();
+  } catch(err) {
+    console.error('Failed to load graph data:', err);
+    document.getElementById('conn-status').className = 'disconnected';
+    document.getElementById('conn-status').textContent = '⊘ fetch failed';
+    return;
+  }
+  allNodes = data.nodes;
+  allEdges = data.edges;
+  nodeMap = {};
+  allNodes.forEach(n => nodeMap[n.id] = n);
+
+  // Timeline bounds
+  const timestamps = allNodes.map(n => n.created).filter(Boolean).sort((a,b) => a - b);
+  timelineMin = timestamps[0] || 0;
+  timelineMax = timestamps[timestamps.length - 1] || Date.now();
+
+  // Build adjacency cache
+  rebuildAdjacency();
+
+  // Set graph data
+  Graph.graphData({ nodes: [...allNodes], links: [...allEdges] });
+
+  // Update stats
+  document.getElementById('stat-nodes').textContent = allNodes.length;
+  document.getElementById('stat-edges').textContent = allEdges.length;
+  document.getElementById('tl-date').textContent = 'LIVE';
+  document.getElementById('tl-counts').textContent = `${allNodes.length} nodes · ${allEdges.length} edges`;
+}
+
+// === POLLING CONNECTION (replaces SSE — more reliable) ===
+let pollRecallTs = 0, pollNodeTs = 0, pollEdgeTs = 0;
+let pollInterval = null;
+let pollConnected = false;
+
+function startPolling() {
+  // Initialize timestamps from current data so we only get NEW events
+  pollRecallTs = Date.now();
+  
+  const nodeTimestamps = allNodes.map(n => n.created).filter(Boolean);
+  pollNodeTs = nodeTimestamps.length ? Math.max(...nodeTimestamps) : Date.now();
+  
+  const edgeTimestamps = allEdges.map(e => e.created).filter(Boolean);
+  pollEdgeTs = edgeTimestamps.length ? Math.max(...edgeTimestamps) : Date.now();
+
+  pollInterval = setInterval(pollForEvents, 1500);
+  pollConnected = true;
+  document.getElementById('conn-status').className = 'connected';
+  document.getElementById('conn-status').textContent = '● live';
+  document.getElementById('live-dot').style.background = '#4C9B50';
+}
+
+async function pollForEvents() {
+  try {
+    const res = await fetch(`/poll?recall=${pollRecallTs}&node=${pollNodeTs}&edge=${pollEdgeTs}`);
+    if (!res.ok) throw new Error('poll failed');
+    const { events } = await res.json();
+    
+    if (!pollConnected) {
+      pollConnected = true;
+      document.getElementById('conn-status').className = 'connected';
+      document.getElementById('conn-status').textContent = '● live';
+      document.getElementById('live-dot').style.background = '#4C9B50';
+    }
+    
+    for (const evt of events) {
+      if (evt.type === 'recall' && mode === 'live') {
+        triggerRetrievalAnimation(evt.data);
+        pollRecallTs = Math.max(pollRecallTs, evt.data.created_at || pollRecallTs);
+      }
+      
+      if (evt.type === 'node_created' && mode === 'live') {
+        const node = evt.data;
+        if (!nodeMap[node.id]) {
+          node._spawnTime = performance.now();
+          nodeMap[node.id] = node;
+          allNodes.push(node);
+          const gd = Graph.graphData();
+          gd.nodes.push(node);
+          Graph.graphData(gd);
+          document.getElementById('stat-nodes').textContent = allNodes.length;
+        }
+        pollNodeTs = Math.max(pollNodeTs, node.created || pollNodeTs);
+      }
+      
+      if (evt.type === 'edge_created' && mode === 'live') {
+        const edge = evt.data;
+        allEdges.push(edge);
+        rebuildAdjacency();
+        const gd = Graph.graphData();
+        gd.links.push(edge);
+        Graph.graphData(gd);
+        document.getElementById('stat-edges').textContent = allEdges.length;
+        pollEdgeTs = Math.max(pollEdgeTs, edge.created || pollEdgeTs);
+      }
+    }
+  } catch(err) {
+    pollConnected = false;
+    document.getElementById('conn-status').className = 'disconnected';
+    document.getElementById('conn-status').textContent = '⊘ reconnecting...';
+    document.getElementById('live-dot').style.background = '#E9C91A';
+  }
+}
+
+// === PARTICLE SYSTEM ===
+function emitParticles(position, count = 8) {
+  const scene = Graph.scene();
+  for (let i = 0; i < count; i++) {
+    const spriteMat = new THREE.SpriteMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(1.5, 1.5, 1);
+    sprite.position.set(position.x, position.y, position.z);
+    
+    // Random velocity
+    const speed = 1.5 + Math.random() * 2;
+    sprite._vel = {
+      x: (Math.random() - 0.5) * speed,
+      y: (Math.random() - 0.5) * speed,
+      z: (Math.random() - 0.5) * speed,
+    };
+    sprite._life = 0;
+    sprite._maxLife = 600 + Math.random() * 400;
+    
+    scene.add(sprite);
+    particlePool.push(sprite);
+  }
+}
+
+// Update particles in the animation loop
+function updateParticles(dt) {
+  for (let i = particlePool.length - 1; i >= 0; i--) {
+    const p = particlePool[i];
+    p._life += dt;
+    if (p._life > p._maxLife) {
+      Graph.scene().remove(p);
+      p.material.dispose();
+      particlePool.splice(i, 1);
+      continue;
+    }
+    const t = p._life / p._maxLife;
+    p.position.x += p._vel.x;
+    p.position.y += p._vel.y;
+    p.position.z += p._vel.z;
+    // Fade out + shrink
+    p.material.opacity = 0.9 * (1 - t);
+    const s = 1.5 * (1 - t * 0.5);
+    p.scale.set(s, s, 1);
+  }
+}
+
+// === RETRIEVAL ANIMATION ===
+// Phase 1: BFS cascade — wave sweeps entire graph, each node flashes white briefly then fades
+// Phase 2: Spotlight — retrieved nodes stay white, everything else dims to 10% opacity
+// Phase 3: Restore — everything transitions back to default
+let animPhase = 'idle'; // 'cascade' | 'spotlight' | 'idle'
+
+function triggerRetrievalAnimation(recallData) {
+  const hitIds = new Set(recallData.graphNodes.map(n => n.key));
+  if (hitIds.size === 0) return;
+
+  // Diagnostic: detect key/ID mismatches (keys from recall that don't exist in nodeMap)
+  const orphanKeys = recallData.graphNodes.filter(n => !nodeMap[n.key]);
+  if (orphanKeys.length > 0) {
+    console.warn(`[retrieval] ${orphanKeys.length}/${recallData.graphNodes.length} node keys not found in graph:`,
+      orphanKeys.map(n => n.key.substring(0, 12) + '…'));
+  }
+
+  retrievalScores = {};
+  recallData.graphNodes.forEach(n => { retrievalScores[n.key] = n.finalScore || 0.5; });
+
+  // Show live query pill
+  const pill = document.getElementById('live-query');
+  const topNode = recallData.graphNodes[0];
+  const topContent = nodeMap[topNode?.key]?.label || 'query';
+  document.getElementById('lq-text').textContent = `${hitIds.size} nodes retrieved`;
+  document.getElementById('lq-stats').textContent = `top: ${topContent.substring(0,50)}… (${((topNode?.semantic || 0) * 100).toFixed(0)}% cosine similarity)`;
+  pill.style.display = 'block';
+
+  // Clear previous
+  if (retrievalTimeout) clearTimeout(retrievalTimeout);
+  retrievedNodes.clear();
+  cascadeActive.clear();
+  cascadeDimmed.clear();
+  animPhase = 'cascade';
+
+  const centroidId = recallData.graphNodes[0]?.key;
+  if (!centroidId) return;
+
+  // Build position lookup
+  const gd = Graph.graphData();
+  const liveNodeMap = {};
+  gd.nodes.forEach(n => { liveNodeMap[n.id] = n; });
+
+  // Phase 1: BFS cascade
+  // Each node flashes white. Matches → stay white (retrievedNodes).
+  // Non-matches → flash white then go invisible (cascadeDimmed).
+  // Darkness follows the wave like a shadow.
+  const visited = new Set();
+  let waveFront = [centroidId];
+  const FLASH_DURATION = 300;
+
+  function bfsWave() {
+    if (waveFront.length === 0) {
+      // Cascade done — promote any unreached hit nodes that BFS couldn't reach
+      // (disconnected components, orphans, etc.)
+      for (const hid of hitIds) {
+        if (!retrievedNodes.has(hid) && nodeMap[hid]) {
+          retrievedNodes.add(hid);
+          // Emit particles so they still get a visual pop
+          const ln = liveNodeMap[hid];
+          if (ln && ln.x !== undefined) emitParticles(ln, 10);
+        }
+      }
+      // Clean up any remaining flashes
+      setTimeout(() => {
+        cascadeActive.clear();
+        animPhase = 'spotlight'; // now purely spotlight view
+      }, FLASH_DURATION + 100);
+      return;
+    }
+
+    const nextFront = [];
+    for (const nid of waveFront) {
+      if (visited.has(nid)) continue;
+      visited.add(nid);
+
+      // Flash white
+      cascadeActive.add(nid);
+
+      // Particles — more for matches
+      const liveNode = liveNodeMap[nid];
+      if (liveNode && liveNode.x !== undefined) {
+        emitParticles(liveNode, hitIds.has(nid) ? 14 : 4);
+      }
+
+      if (hitIds.has(nid)) {
+        // Match — move to retrievedNodes immediately (stays white)
+        retrievedNodes.add(nid);
+        // Remove from cascadeActive after flash (retrievedNodes keeps it white)
+        const mid = nid;
+        setTimeout(() => { cascadeActive.delete(mid); }, FLASH_DURATION);
+      } else {
+        // Non-match — flash white, then go invisible
+        const fadeId = nid;
+        setTimeout(() => {
+          cascadeActive.delete(fadeId);
+          cascadeDimmed.add(fadeId); // shadow: goes to 10% opacity
+        }, FLASH_DURATION);
+      }
+
+      // Find neighbors
+      const neighbors = adjacency[nid] || new Set();
+      neighbors.forEach(nbr => { if (!visited.has(nbr)) nextFront.push(nbr); });
+    }
+
+    waveFront = nextFront;
+    setTimeout(bfsWave, 80);
+  }
+
+  bfsWave();
+
+  // Show retrieval panel with results — spotlight persists until panel is closed
+  showRetrievalPanel(recallData);
+}
+
+function showRetrievalPanel(recallData) {
+  // Close node inspect panel if open
+  document.getElementById('panel').classList.remove('open');
+  selNode = null;
+
+  const rp = document.getElementById('retrieval-panel');
+  const list = document.getElementById('rp-list');
+  
+  document.getElementById('rp-count').textContent = 
+    `${recallData.graphNodes.length} nodes retrieved · ${recallData.latency_ms || '?'}ms`;
+  
+  list.innerHTML = recallData.graphNodes.map(gn => {
+    const node = nodeMap[gn.key];
+    const label = node ? node.label : gn.key.substring(0, 12) + '…';
+    const content = node ? node.content.substring(0, 120) : '';
+    const type = gn.type || (node ? node.type : 'unknown');
+    const tc = TYPE_COLORS[type] || '#8b8b9e';
+    const sem = ((gn.semantic || 0) * 100).toFixed(0);
+    const fin = ((gn.finalScore || 0) * 100).toFixed(0);
+    
+    return `<div class="rp-node" onclick="flyToRetrievedNode('${gn.key}')">
+      <div class="rp-type" style="background:${tc}22;color:${tc}">${type}</div>
+      <div class="rp-label">${label}</div>
+      <div class="rp-score">similarity: <span>${sem}%</span> · final: <span>${fin}%</span></div>
+      ${content ? `<div style="font-size:10px;color:#6b6b80;margin-top:4px;line-height:1.4">${content}…</div>` : ''}
+    </div>`;
+  }).join('');
+  
+  rp.classList.add('open');
+}
+
+function flyToRetrievedNode(id) {
+  const gd = Graph.graphData();
+  const node = gd.nodes.find(n => n.id === id);
+  if (!node) return;
+  const dist = 120;
+  Graph.cameraPosition(
+    { x: node.x + dist, y: node.y + dist * 0.3, z: node.z + dist },
+    node, 1200
+  );
+}
+
+function closeRetrieval() {
+  // Restore graph to normal
+  animPhase = 'idle';
+  retrievedNodes.clear();
+  cascadeActive.clear();
+  cascadeDimmed.clear();
+  retrievalScores = {};
+  
+  // Hide panels
+  document.getElementById('retrieval-panel').classList.remove('open');
+  document.getElementById('live-query').style.display = 'none';
+}
+
+// === PANEL ===
+function showPanel(n) {
+  const p = document.getElementById('panel-content');
+  const tc = TYPE_COLORS[n.type] || '#8b8b9e';
+  const date = n.created ? new Date(n.created).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '—';
+
+  // Find connected edges
+  const connected = allEdges.filter(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source;
+    const tid = typeof e.target === 'object' ? e.target.id : e.target;
+    return sid === n.id || tid === n.id;
+  });
+
+  let edgesHtml = connected.map(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source;
+    const tid = typeof e.target === 'object' ? e.target.id : e.target;
+    const otherId = sid === n.id ? tid : sid;
+    const other = nodeMap[otherId];
+    const otherLabel = other ? other.label.substring(0, 50) : otherId.substring(0, 12);
+    const relColor = EDGE_COLORS[e.relationship] || '#8b8b9e';
+    const arrow = sid === n.id ? '→' : '←';
+    return `<div class="edge-item" onclick="jumpToNode('${otherId}')">
+      <span class="edge-rel" style="background:${relColor}22;color:${relColor}">${e.relationship}</span>
+      ${arrow} ${otherLabel}
+    </div>`;
+  }).join('');
+
+  p.innerHTML = `
+    <div class="node-type" style="background:${tc}22;color:${tc}">${n.type}</div>
+    <div class="node-label">${n.label}</div>
+    <div class="node-content">${n.content}</div>
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">Created</div><div class="meta-value">${date}</div></div>
+      <div class="meta-item"><div class="meta-label">Confidence</div><div class="meta-value">${(n.confidence || 0).toFixed(2)}</div></div>
+      <div class="meta-item"><div class="meta-label">Significance</div><div class="meta-value">${(n.significance || 0).toFixed(2)}</div></div>
+      <div class="meta-item"><div class="meta-label">Fidelity</div><div class="meta-value">${n.fidelity || '—'}</div></div>
+      <div class="meta-item"><div class="meta-label">Stability</div><div class="meta-value">${(n.stability || 0).toFixed(1)}</div></div>
+      <div class="meta-item"><div class="meta-label">Reinforced</div><div class="meta-value">${n.reinforcement_count || 0}×</div></div>
+    </div>
+    <div class="edges-section">
+      <h4>Connections (${connected.length})</h4>
+      ${edgesHtml || '<div style="color:#6b6b80;font-style:italic">No connections</div>'}
+    </div>
+  `;
+  document.getElementById('panel').classList.add('open');
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.remove('open');
+  selNode = null;
+  Graph.linkColor(Graph.linkColor());
+  Graph.linkWidth(Graph.linkWidth());
+}
+
+function jumpToNode(id) {
+  const n = nodeMap[id];
+  if (!n) return;
+  // Find the live node object from graphData
+  const gd = Graph.graphData();
+  const liveNode = gd.nodes.find(nd => nd.id === id);
+  if (liveNode) {
+    selNode = liveNode;
+    showPanel(liveNode);
+    const dist = 120;
+    Graph.cameraPosition({ x: liveNode.x + dist, y: liveNode.y + dist/2, z: liveNode.z + dist }, liveNode, 1000);
+    Graph.nodeColor(Graph.nodeColor());
+  }
+}
+
+// === SEARCH ===
+document.getElementById('search').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  if (q.length >= 2) {
+    searchMatch = new Set();
+    allNodes.forEach(n => {
+      if ((n.label + ' ' + n.content + ' ' + n.type).toLowerCase().includes(q)) {
+        searchMatch.add(n.id);
+      }
+    });
+  } else {
+    searchMatch = null;
+  }
+});
+
+// === MODE SWITCHING ===
+function setMode(m) {
+  mode = m;
+  document.getElementById('mode-live').classList.toggle('active', m === 'live');
+  document.getElementById('mode-timeline').classList.toggle('active', m === 'timeline');
+
+  const timelineEls = document.querySelectorAll('#timeline .play-btn, #timeline .scrubber, #timeline .speed-btn');
+  timelineEls.forEach(el => el.style.display = m === 'timeline' ? '' : 'none');
+
+  if (m === 'live') {
+    // Show all nodes
+    Graph.graphData({ nodes: [...allNodes], links: [...allEdges] });
+    document.getElementById('tl-date').textContent = 'LIVE';
+    document.getElementById('tl-counts').textContent = `${allNodes.length} nodes · ${allEdges.length} edges`;
+  } else {
+    // Reset timeline to start
+    playTs = timelineMin;
+    updateTimeline();
+  }
+}
+
+// === TIMELINE ===
+const scrubber = document.getElementById('scrubber');
+scrubber.addEventListener('input', () => {
+  const pct = scrubber.value / 100;
+  playTs = timelineMin + pct * (timelineMax - timelineMin);
+  updateTimeline();
+});
+
+function updateTimeline() {
+  if (mode !== 'timeline') return;
+  const visNodes = allNodes.filter(n => n.created <= playTs);
+  const visIds = new Set(visNodes.map(n => n.id));
+  const visEdges = allEdges.filter(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source;
+    const tid = typeof e.target === 'object' ? e.target.id : e.target;
+    return visIds.has(sid) && visIds.has(tid) && (e.created || 0) <= playTs;
+  });
+
+  Graph.graphData({ nodes: visNodes, links: visEdges });
+
+  const date = new Date(playTs).toLocaleDateString('en-US', {month:'short',day:'numeric'});
+  document.getElementById('tl-date').textContent = date;
+  document.getElementById('tl-counts').textContent = `${visNodes.length} / ${allNodes.length} nodes`;
+
+  const pct = (playTs - timelineMin) / (timelineMax - timelineMin) * 100;
+  scrubber.value = pct;
+}
+
+function togglePlay() {
+  playing = !playing;
+  document.getElementById('play-btn').textContent = playing ? '⏸' : '▶';
+  if (playing && playTs >= timelineMax) playTs = timelineMin;
+  if (playing) animateTimeline();
+}
+
+function animateTimeline() {
+  if (!playing || mode !== 'timeline') return;
+  const step = (timelineMax - timelineMin) / 600 * playSpeed; // ~10s at 1×
+  playTs += step;
+  if (playTs >= timelineMax) {
+    playTs = timelineMax;
+    playing = false;
+    document.getElementById('play-btn').textContent = '▶';
+  }
+  updateTimeline();
+  if (playing) requestAnimationFrame(animateTimeline);
+}
+
+// Speed buttons
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    playSpeed = parseFloat(btn.dataset.speed);
+    document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// === INIT ===
+addEventListener('resize', () => Graph.width(innerWidth).height(innerHeight));
+window._dbg('Graph created, loading data...');
+loadData().then(() => {
+  window._dbg('Data loaded: ' + allNodes.length + ' nodes, ' + allEdges.length + ' edges');
+  startPolling();
+  window._dbg('Polling started (1.5s interval)...');
+}).catch(err => {
+  window._dbg('loadData FAILED: ' + err.message);
+});
+
+} catch(e) { window._dbg('CRASH: ' + e.message + ' at line ' + (e.stack||'').split('\n')[1]); }
+// Close accuracy detail on outside click
+document.addEventListener('click', (e) => {
+  const detail = document.getElementById('accuracy-detail');
+  const trigger = document.getElementById('accuracy');
+  if (detail && trigger && !detail.contains(e.target) && !trigger.contains(e.target)) {
+    detail.classList.remove('open');
+  }
+});
+</script>
+</body>
+</html>
